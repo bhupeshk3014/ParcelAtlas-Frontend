@@ -15,10 +15,11 @@ const LAYER_ID = "parcels-layer";
 
 type Props = {
   filters: ParcelFilters;
-  filtersVersion: number; // increments when user clicks Apply/Reset
+  filtersVersion: number; 
+  onBboxChange: (bbox: number[]) => void;
 };
 
-export default function MapView({ filters, filtersVersion }: Props) {
+export default function MapView({ filters, filtersVersion, onBboxChange }: Props) {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const mapDivRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -81,6 +82,7 @@ export default function MapView({ filters, filtersVersion }: Props) {
     const loadParcels = async () => {
       if (!mapRef.current) return;
       const bbox = getBbox(mapRef.current);
+      onBboxChange(bbox);
 
       try {
         setLoading(true);
@@ -190,6 +192,7 @@ export default function MapView({ filters, filtersVersion }: Props) {
     if (!map) return;
 
     const bbox = getBbox(map);
+    onBboxChange(bbox);
 
     setLoading(true);
     fetchParcels({ bbox, limit: 1500, ...filters })
