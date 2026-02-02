@@ -12,6 +12,9 @@ function getBbox(map: mapboxgl.Map): number[] {
 
 const SOURCE_ID = "parcels-src";
 const LAYER_ID = "parcels-layer";
+const POLY_SOURCE_ID = "parcels-poly-src";
+const POLY_FILL_ID = "parcels-poly-fill";
+const POLY_LINE_ID = "parcels-poly-line";
 
 type Props = {
   filters: ParcelFilters;
@@ -54,7 +57,6 @@ export default function MapView({ filters, filtersVersion, onBboxChange }: Props
     };
   }, [items]);
 
-  // Keep latest filters available inside map event handlers without re-registering them
   const filtersRef = useRef<ParcelFilters>({});
   useEffect(() => {
     filtersRef.current = filters;
@@ -81,20 +83,78 @@ export default function MapView({ filters, filtersVersion, onBboxChange }: Props
 
     const loadParcels = async () => {
       if (!mapRef.current) return;
-      const bbox = getBbox(mapRef.current);
-      onBboxChange(bbox);
+      const map = mapRef.current;
+      const bbox = getBbox(map);
 
       try {
         setLoading(true);
 
-        const data = await fetchParcels({
+        // 1) Always fetch centroids first (fast)
+        const centroidData = await fetchParcels({
           bbox,
           limit: 1500,
-          ...filtersRef.current, // ✅ apply current filters
+          format: "centroid",
+          ...filtersRef.current,
         });
 
-        setCount(data.count);
-        setItems(data.items);
+        if ("items" in centroidData) {
+          setCount(centroidData.count);
+          setItems(centroidData.items);
+        }
+
+        // 2) Decide if we should fetch polygons
+        const zoom = map.getZoom();
+        const itemCount = "items" in centroidData ? centroidData.items.length : 0;
+
+        const shouldUsePolygons = zoom >= 17;
+
+        if (!shouldUsePolygons) {
+          // remove polygon layers if present
+          if (map.getLayer(POLY_FILL_ID)) map.removeLayer(POLY_FILL_ID);
+          if (map.getLayer(POLY_LINE_ID)) map.removeLayer(POLY_LINE_ID);
+          if (map.getSource(POLY_SOURCE_ID)) map.removeSource(POLY_SOURCE_ID);
+          return;
+        }
+
+        // 3) Fetch polygons 
+        const polyData = await fetchParcels({
+          bbox,
+          limit: 200, // your backend default/safe
+          format: "polygon",
+          ...filtersRef.current,
+        });
+
+        if ("geojson" in polyData) {
+          if (map.getSource(POLY_SOURCE_ID)) {
+            (map.getSource(POLY_SOURCE_ID) as mapboxgl.GeoJSONSource).setData(polyData.geojson as any);
+          } else {
+            map.addSource(POLY_SOURCE_ID, {
+              type: "geojson",
+              data: polyData.geojson as any,
+            });
+
+            map.addLayer({
+              id: POLY_FILL_ID,
+              type: "fill",
+              source: POLY_SOURCE_ID,
+              paint: {
+                "fill-color": "#2563eb",
+                "fill-opacity": 0.15,
+              },
+            });
+
+            map.addLayer({
+              id: POLY_LINE_ID,
+              type: "line",
+              source: POLY_SOURCE_ID,
+              paint: {
+                "line-color": "#2563eb",
+                "line-width": 2,
+                "line-opacity": 0.9,
+              },
+            });
+          }
+        }
       } catch (err) {
         console.error("failed to load parcels", err);
       } finally {
@@ -103,7 +163,6 @@ export default function MapView({ filters, filtersVersion, onBboxChange }: Props
     };
 
     map.on("load", () => {
-      // Create source + layer once
       map.addSource(SOURCE_ID, {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
@@ -122,7 +181,6 @@ export default function MapView({ filters, filtersVersion, onBboxChange }: Props
         },
       });
 
-      // cursor polish
       map.on("mouseenter", LAYER_ID, () => {
         map.getCanvas().style.cursor = "pointer";
       });
@@ -177,7 +235,6 @@ export default function MapView({ filters, filtersVersion, onBboxChange }: Props
     };
   }, []);
 
-  // ✅ Whenever geojson changes, update the existing source data
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -186,7 +243,7 @@ export default function MapView({ filters, filtersVersion, onBboxChange }: Props
     src.setData(geojson as any);
   }, [geojson]);
 
-  // ✅ When user clicks Apply/Reset, re-fetch immediately (no need to move the map)
+  // When user clicks Apply/Reset, re-fetch immediately (no need to move the map)
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -202,14 +259,14 @@ export default function MapView({ filters, filtersVersion, onBboxChange }: Props
       })
       .catch((err) => console.error("failed to load parcels", err))
       .finally(() => setLoading(false));
-  }, [filtersVersion]); // important: only refetch when Apply/Reset clicked
+  }, [filtersVersion]); 
 
   return (
     <div ref={wrapperRef} className="h-full w-full relative">
       <div ref={mapDivRef} className="h-full w-full" />
 
       <div className="absolute bottom-3 left-3 bg-white/90 border rounded-md px-3 py-2 text-xs text-gray-700 shadow">
-        {loading ? "Loading parcels..." : `Points shown: ${items.length} (count: ${count})`}
+        {loading ? "Loading parcels..." : `Points: ${items.length} | Count: ${count} | Zoom: ${mapRef.current?.getZoom().toFixed(1) ?? "-"}`}
       </div>
     </div>
   );
