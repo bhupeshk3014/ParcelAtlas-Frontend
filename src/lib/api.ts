@@ -13,15 +13,24 @@ export type Parcel = {
 export async function fetchParcels(params: {
   bbox: number[];
   limit?: number;
+  minValue?: number;
+  maxValue?: number;
+  minSqft?: number;
+  maxSqft?: number;
 }) {
-  const { bbox, limit = 1000 } = params;
+  const { bbox, limit = 1000, minValue, maxValue, minSqft, maxSqft } = params;
 
   const qs = new URLSearchParams({
     bbox: bbox.join(","),
     limit: String(limit),
   });
 
-  const res = await fetch(`${API_BASE}/parcels?${qs}`);
-  if (!res.ok) throw new Error("Failed to fetch parcels");
-  return res.json();
+  if (minValue !== undefined) qs.set("minValue", String(minValue));
+  if (maxValue !== undefined) qs.set("maxValue", String(maxValue));
+  if (minSqft !== undefined) qs.set("minSqft", String(minSqft));
+  if (maxSqft !== undefined) qs.set("maxSqft", String(maxSqft));
+
+  const res = await fetch(`${API_BASE}/parcels?${qs.toString()}`);
+  if (!res.ok) throw new Error(`Failed to fetch parcels: ${res.status}`);
+  return res.json() as Promise<{ count: number; items: Parcel[] }>;
 }

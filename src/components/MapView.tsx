@@ -1,6 +1,7 @@
 import mapboxgl from "mapbox-gl";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { fetchParcels, type Parcel } from "../lib/api";
+import type { ParcelFilters } from "../lib/types";
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
 
@@ -12,7 +13,12 @@ function getBbox(map: mapboxgl.Map): number[] {
 const SOURCE_ID = "parcels-src";
 const LAYER_ID = "parcels-layer";
 
-export default function MapView() {
+type Props = {
+  filters: ParcelFilters;
+  filtersVersion: number; // increments when user clicks Apply/Reset
+};
+
+export default function MapView({ filters, filtersVersion }: Props) {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const mapDivRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -47,6 +53,12 @@ export default function MapView() {
     };
   }, [items]);
 
+  // Keep latest filters available inside map event handlers without re-registering them
+  const filtersRef = useRef<ParcelFilters>({});
+  useEffect(() => {
+    filtersRef.current = filters;
+  }, [filters]);
+
   useEffect(() => {
     if (!mapDivRef.current || mapRef.current) return;
 
@@ -59,6 +71,7 @@ export default function MapView() {
 
     map.addControl(new mapboxgl.NavigationControl(), "top-right");
 
+    // Resize fixes
     requestAnimationFrame(() => map.resize());
     setTimeout(() => map.resize(), 250);
 
@@ -71,7 +84,13 @@ export default function MapView() {
 
       try {
         setLoading(true);
-        const data = await fetchParcels({ bbox, limit: 1500 });
+
+        const data = await fetchParcels({
+          bbox,
+          limit: 1500,
+          ...filtersRef.current, // ✅ apply current filters
+        });
+
         setCount(data.count);
         setItems(data.items);
       } catch (err) {
@@ -101,6 +120,7 @@ export default function MapView() {
         },
       });
 
+      // cursor polish
       map.on("mouseenter", LAYER_ID, () => {
         map.getCanvas().style.cursor = "pointer";
       });
@@ -155,7 +175,7 @@ export default function MapView() {
     };
   }, []);
 
-  // Whenever geojson changes, update the existing source data
+  // ✅ Whenever geojson changes, update the existing source data
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -163,6 +183,23 @@ export default function MapView() {
     if (!src) return;
     src.setData(geojson as any);
   }, [geojson]);
+
+  // ✅ When user clicks Apply/Reset, re-fetch immediately (no need to move the map)
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const bbox = getBbox(map);
+
+    setLoading(true);
+    fetchParcels({ bbox, limit: 1500, ...filters })
+      .then((data) => {
+        setCount(data.count);
+        setItems(data.items);
+      })
+      .catch((err) => console.error("failed to load parcels", err))
+      .finally(() => setLoading(false));
+  }, [filtersVersion]); // important: only refetch when Apply/Reset clicked
 
   return (
     <div ref={wrapperRef} className="h-full w-full relative">
