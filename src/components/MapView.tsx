@@ -50,6 +50,10 @@ function escapeHtml(s: string) {
   });
 }
 
+function shouldRenderPolygons(zoom: number, itemCount: number) {
+  return zoom >= 14 && itemCount > 0 && itemCount <= 100;
+}
+
 const POLY_SOURCE_ID = "parcels-poly-src";
 const POLY_FILL_ID = "parcels-poly-fill";
 const POLY_LINE_ID = "parcels-poly-line";
@@ -75,32 +79,40 @@ export default function MapView({ filters, filtersVersion, onBboxChange }: Props
   }, [items]);
 
   const debounceRef = useRef<number | null>(null);
-  const popupRef = useRef<mapboxgl.Popup | null>(null);
 
+  const popupRef = useRef<mapboxgl.Popup | null>(null);
   const openIdRef = useRef<string | null>(null);
 
-  const filtersRef = useRef<ParcelFilters>({});
+  const filtersRef = useRef<ParcelFilters>(filters);
   useEffect(() => {
     filtersRef.current = filters;
   }, [filters]);
 
   const markersRef = useRef<mapboxgl.Marker[]>([]);
 
+  const aliveRef = useRef(true);
+
+  const reqIdRef = useRef(0);
+
+  const loadRef = useRef<null | (() => void)>(null);
+
   function clearMarkers() {
     markersRef.current.forEach((m) => m.remove());
     markersRef.current = [];
-  }
-
-  function clearPolygons(map: mapboxgl.Map) {
-    if (map.getLayer(POLY_FILL_ID)) map.removeLayer(POLY_FILL_ID);
-    if (map.getLayer(POLY_LINE_ID)) map.removeLayer(POLY_LINE_ID);
-    if (map.getSource(POLY_SOURCE_ID)) map.removeSource(POLY_SOURCE_ID);
   }
 
   function closePopup() {
     popupRef.current?.remove();
     popupRef.current = null;
     openIdRef.current = null;
+  }
+
+  function clearPolygons(map: mapboxgl.Map) {
+    closePopup();
+
+    if (map.getLayer(POLY_FILL_ID)) map.removeLayer(POLY_FILL_ID);
+    if (map.getLayer(POLY_LINE_ID)) map.removeLayer(POLY_LINE_ID);
+    if (map.getSource(POLY_SOURCE_ID)) map.removeSource(POLY_SOURCE_ID);
   }
 
   function showPopup(map: mapboxgl.Map, lngLat: mapboxgl.LngLatLike, props: any) {
@@ -145,30 +157,39 @@ export default function MapView({ filters, filtersVersion, onBboxChange }: Props
     });
   }
 
+  function safeToDraw(map: mapboxgl.Map) {
+    if (!aliveRef.current) return false;
+    try {
+      const c = map.getCanvasContainer?.();
+      return !!c;
+    } catch {
+      return false;
+    }
+  }
+
   function drawPillMarkers(map: mapboxgl.Map, parcels: Parcel[]) {
+    if (!safeToDraw(map)) return;
+
     clearMarkers();
 
     const zoom = map.getZoom();
-    const max =
-      zoom < 11 ? 120 :
-      zoom < 13 ? 250 :
-      zoom < 15 ? 600 :
-      1200;
+    const max = zoom < 11 ? 120 : zoom < 13 ? 250 : zoom < 15 ? 600 : 1200;
 
     parcels
       .filter((p) => Number.isFinite(p.lng) && Number.isFinite(p.lat))
       .slice(0, max)
       .forEach((p) => {
+        if (!safeToDraw(map)) return;
+
         const el = document.createElement("button");
         el.type = "button";
 
         el.className =
-          "px-2.5 py-1 rounded-full text-[11px] font-semibold " +
+          "pa-pill px-2.5 py-1 rounded-full text-[11px] font-semibold " +
           "bg-blue-600 text-white shadow-md border border-white/70 " +
           "hover:bg-blue-700 active:bg-blue-800 transition " +
           "whitespace-nowrap select-none";
 
-        el.style.transform = "translateY(-1px)";
         el.textContent = formatMoney(p.total_value ?? null) || "—";
 
         el.addEventListener("click", (e) => {
@@ -203,6 +224,8 @@ export default function MapView({ filters, filtersVersion, onBboxChange }: Props
   useEffect(() => {
     if (!mapDivRef.current || mapRef.current) return;
 
+    aliveRef.current = true;
+
     const map = new mapboxgl.Map({
       container: mapDivRef.current,
       style: "mapbox://styles/mapbox/streets-v12",
@@ -218,11 +241,22 @@ export default function MapView({ filters, filtersVersion, onBboxChange }: Props
     const ro = new ResizeObserver(() => map.resize());
     if (wrapperRef.current) ro.observe(wrapperRef.current);
 
-    map.on("click", () => {
-      closePopup();
-    });
+    map.on("click", () => closePopup());
+
+    const onPolyClick = (e: mapboxgl.MapLayerMouseEvent) => {
+      e.preventDefault();
+      e.originalEvent.stopPropagation();
+
+      const feature = e.features?.[0];
+      if (!feature) return;
+
+      openIdRef.current = null;
+      showPopup(map, e.lngLat, feature.properties);
+    };
 
     const loadParcels = async () => {
+      const currentReq = ++reqIdRef.current;
+
       if (!mapRef.current) return;
       const m = mapRef.current;
 
@@ -232,6 +266,7 @@ export default function MapView({ filters, filtersVersion, onBboxChange }: Props
       try {
         setLoading(true);
 
+        // ---- CENTROIDS ----
         const centroidData = await fetchParcels({
           bbox,
           limit: 1500,
@@ -239,16 +274,27 @@ export default function MapView({ filters, filtersVersion, onBboxChange }: Props
           ...filtersRef.current,
         });
 
+        if (!aliveRef.current || currentReq !== reqIdRef.current || !mapRef.current) return;
+
         if ("items" in centroidData) {
           setCount(centroidData.count);
           setItems(centroidData.items);
           drawPillMarkers(m, centroidData.items);
+
+          const zoom = m.getZoom();
+          const itemCount = centroidData.items.length;
+
+          if (!shouldRenderPolygons(zoom, itemCount)) {
+            clearPolygons(m);
+            return;
+          }
         }
 
+        // ---- POLYGONS ----
         const zoom = m.getZoom();
-        const shouldUsePolygons = zoom >= 18;
+        const itemCount = itemsRef.current.length;
 
-        if (!shouldUsePolygons) {
+        if (!shouldRenderPolygons(zoom, itemCount)) {
           clearPolygons(m);
           return;
         }
@@ -259,6 +305,8 @@ export default function MapView({ filters, filtersVersion, onBboxChange }: Props
           format: "polygon",
           ...filtersRef.current,
         });
+
+        if (!aliveRef.current || currentReq !== reqIdRef.current || !mapRef.current) return;
 
         if (!("geojson" in polyData)) {
           clearPolygons(m);
@@ -284,21 +332,12 @@ export default function MapView({ filters, filtersVersion, onBboxChange }: Props
             paint: { "line-color": "#2563eb", "line-width": 2, "line-opacity": 0.9 },
           });
 
-          map.on("click", POLY_FILL_ID, (e) => {
-            e.preventDefault();
-            e.originalEvent.stopPropagation(); 
-
-            const feature = e.features?.[0];
-            if (!feature) return;
-
-            openIdRef.current = null; 
-            showPopup(map, e.lngLat, feature.properties);
-          });
+          m.on("click", POLY_FILL_ID, onPolyClick);
         }
       } catch (err) {
         console.error("failed to load parcels", err);
       } finally {
-        setLoading(false);
+        if (aliveRef.current) setLoading(false);
       }
     };
 
@@ -311,26 +350,38 @@ export default function MapView({ filters, filtersVersion, onBboxChange }: Props
 
     map.on("zoomend", () => {
       drawPillMarkers(map, itemsRef.current);
+
+      const z = map.getZoom();
+      const n = itemsRef.current.length;
+      if (!shouldRenderPolygons(z, n)) {
+        clearPolygons(map);
+      }
     });
 
     mapRef.current = map;
-    (mapRef.current as any).__loadParcels = loadParcels;
+    loadRef.current = () => loadParcels();
 
     return () => {
+      aliveRef.current = false;
+
       if (debounceRef.current) window.clearTimeout(debounceRef.current);
+
       closePopup();
       clearMarkers();
       ro.disconnect();
+
+      if (map.getLayer(POLY_FILL_ID)) {
+        map.off("click", POLY_FILL_ID, onPolyClick);
+      }
+
       map.remove();
       mapRef.current = null;
+      loadRef.current = null;
     };
   }, [onBboxChange]);
 
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    const loader = (map as any).__loadParcels as undefined | (() => void);
-    loader?.();
+    loadRef.current?.();
   }, [filtersVersion]);
 
   return (

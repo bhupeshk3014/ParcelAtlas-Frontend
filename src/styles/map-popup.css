@@ -1,34 +1,31 @@
+/* Remove Mapbox default white popup padding/background */
 .mapboxgl-popup-content {
   padding: 0 !important;
-  background: transparent !important;
-  box-shadow: none !important;
-  border-radius: 0 !important;
-}
-
-.mapboxgl-popup-tip {
-  display: none !important; 
+  border-radius: 14px;
+  overflow: hidden;
 }
 
 .mapboxgl-popup-close-button {
-  font-size: 16px !important;
-  line-height: 1 !important;
-  padding: 8px 10px !important;
-  color: #6b7280 !important;
-  background: transparent !important;
-  border: none !important;
+  font-size: 18px;
+  line-height: 18px;
+  padding: 8px 10px;
+  margin: 6px;              /* ✅ space between X and content */
+  border-radius: 10px;
+  color: #111827;
 }
 
 .mapboxgl-popup-close-button:hover {
-  color: #111827 !important;
+  background: rgba(17, 24, 39, 0.06);
 }
 
+/* Your popup UI */
 .pa-popup {
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
-  background: #ffffff;
-  border: 1px solid rgba(0,0,0,0.08);
+  padding: 12px 12px 10px;
   border-radius: 14px;
-  box-shadow: 0 10px 25px rgba(0,0,0,0.15);
-  padding: 12px 36px 10px 12px; 
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
   min-width: 260px;
 }
 
@@ -36,7 +33,8 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 14px; 
+  gap: 12px;
+  padding-right: 26px; /* ✅ leave room so X never touches pill */
 }
 
 .pa-popup__addr {
@@ -48,7 +46,7 @@
 
 .pa-popup__pill {
   background: #2563eb;
-  color: #ffffff;
+  color: #fff;
   padding: 4px 10px;
   border-radius: 999px;
   font-size: 12px;
@@ -57,7 +55,7 @@
 }
 
 .pa-popup__grid {
-  margin-top: 8px;
+  margin-top: 10px;
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
@@ -81,4 +79,9 @@
   color: #111827;
   font-weight: 800;
   margin-top: 2px;
+}
+
+/* Optional: pill marker class hook */
+.pa-pill {
+  transform: translateY(-1px);
 }

@@ -1,4 +1,6 @@
 import type { ParcelFilters } from "./types";
+import { getTokens } from "./auth";
+
 const API_BASE = import.meta.env.VITE_API_BASE_URL;
 
 export type Parcel = {
@@ -41,7 +43,11 @@ export async function fetchParcels(params: {
   if (minSqft !== undefined) qs.set("minSqft", String(minSqft));
   if (maxSqft !== undefined) qs.set("maxSqft", String(maxSqft));
 
-  const res = await fetch(`${API_BASE}/parcels?${qs.toString()}`);
+  const tokens = getTokens();
+  const headers: HeadersInit = {};
+  if (tokens?.id_token) headers["Authorization"] = `Bearer ${tokens.id_token}`;
+
+  const res = await fetch(`${API_BASE}/parcels?${qs.toString()}`, { headers });
   if (!res.ok) throw new Error(`Failed to fetch parcels: ${res.status}`);
 
   return res.json() as Promise<ParcelsCentroidResponse | ParcelsPolygonResponse>;
