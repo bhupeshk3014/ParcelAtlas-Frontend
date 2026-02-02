@@ -29,7 +29,7 @@ export default function Home() {
         </aside>
 
         <main className="flex-1 min-h-0 overflow-hidden">
-          <MapView filters={filters} filtersVersion={filtersVersion} onBboxChange={setBbox} />
+          <MapView filters={filters} filtersVersion={filtersVersion} onBboxChange={setBbox}/>
         </main>
       </div>
     </div>

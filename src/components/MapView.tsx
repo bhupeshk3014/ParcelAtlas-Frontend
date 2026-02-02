@@ -1,5 +1,5 @@
 import mapboxgl from "mapbox-gl";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { fetchParcels, type Parcel } from "../lib/api";
 import type { ParcelFilters } from "../lib/types";
 
@@ -10,15 +10,53 @@ function getBbox(map: mapboxgl.Map): number[] {
   return [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
 }
 
-const SOURCE_ID = "parcels-src";
-const LAYER_ID = "parcels-layer";
+function formatMoney(v: number | null | undefined) {
+  if (v === null || v === undefined) return "";
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "";
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `$${Math.round(n / 1_000)}K`;
+  return `$${n}`;
+}
+
+function formatMoneyFull(v: number | null | undefined) {
+  if (v === null || v === undefined) return "N/A";
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "N/A";
+  return n.toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  });
+}
+
+function formatNumber(v: number | null | undefined) {
+  if (v === null || v === undefined) return "N/A";
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "N/A";
+  return n.toLocaleString("en-US");
+}
+
+function escapeHtml(s: string) {
+  return s.replace(/[&<>"']/g, (c) => {
+    const map: Record<string, string> = {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#039;",
+    };
+    return map[c] || c;
+  });
+}
+
 const POLY_SOURCE_ID = "parcels-poly-src";
 const POLY_FILL_ID = "parcels-poly-fill";
 const POLY_LINE_ID = "parcels-poly-line";
 
 type Props = {
   filters: ParcelFilters;
-  filtersVersion: number; 
+  filtersVersion: number;
   onBboxChange: (bbox: number[]) => void;
 };
 
@@ -31,36 +69,136 @@ export default function MapView({ filters, filtersVersion, onBboxChange }: Props
   const [count, setCount] = useState<number>(0);
   const [items, setItems] = useState<Parcel[]>([]);
 
+  const itemsRef = useRef<Parcel[]>([]);
+  useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
+
   const debounceRef = useRef<number | null>(null);
   const popupRef = useRef<mapboxgl.Popup | null>(null);
 
-  // Convert parcels to GeoJSON FeatureCollection (Mapbox-friendly)
-  const geojson = useMemo(() => {
-    return {
-      type: "FeatureCollection" as const,
-      features: items
-        .filter((p) => Number.isFinite(p.lng) && Number.isFinite(p.lat))
-        .map((p) => ({
-          type: "Feature" as const,
-          geometry: {
-            type: "Point" as const,
-            coordinates: [p.lng, p.lat],
-          },
-          properties: {
-            sl_uuid: p.sl_uuid,
-            address: p.address ?? "",
-            county: p.county,
-            sqft: p.sqft ?? null,
-            total_value: p.total_value ?? null,
-          },
-        })),
-    };
-  }, [items]);
+  const openIdRef = useRef<string | null>(null);
 
   const filtersRef = useRef<ParcelFilters>({});
   useEffect(() => {
     filtersRef.current = filters;
   }, [filters]);
+
+  const markersRef = useRef<mapboxgl.Marker[]>([]);
+
+  function clearMarkers() {
+    markersRef.current.forEach((m) => m.remove());
+    markersRef.current = [];
+  }
+
+  function clearPolygons(map: mapboxgl.Map) {
+    if (map.getLayer(POLY_FILL_ID)) map.removeLayer(POLY_FILL_ID);
+    if (map.getLayer(POLY_LINE_ID)) map.removeLayer(POLY_LINE_ID);
+    if (map.getSource(POLY_SOURCE_ID)) map.removeSource(POLY_SOURCE_ID);
+  }
+
+  function closePopup() {
+    popupRef.current?.remove();
+    popupRef.current = null;
+    openIdRef.current = null;
+  }
+
+  function showPopup(map: mapboxgl.Map, lngLat: mapboxgl.LngLatLike, props: any) {
+    const address = escapeHtml(props?.address || "(no address)");
+    const county = escapeHtml(props?.county || "—");
+    const valueFull = formatMoneyFull(props?.total_value);
+    const sqft = formatNumber(props?.sqft);
+
+    popupRef.current?.remove();
+
+    popupRef.current = new mapboxgl.Popup({
+      closeButton: true,
+      closeOnClick: false, 
+      maxWidth: "340px",
+      offset: 18,
+    })
+      .setLngLat(lngLat)
+      .setHTML(`
+        <div class="pa-popup">
+          <div class="pa-popup__top">
+            <div class="pa-popup__addr">${address}</div>
+            <div class="pa-popup__pill">${valueFull}</div>
+          </div>
+
+          <div class="pa-popup__grid">
+            <div class="pa-popup__box">
+              <div class="pa-popup__label">County</div>
+              <div class="pa-popup__value">${county}</div>
+            </div>
+
+            <div class="pa-popup__box">
+              <div class="pa-popup__label">Sqft</div>
+              <div class="pa-popup__value">${sqft}</div>
+            </div>
+          </div>
+        </div>
+      `)
+      .addTo(map);
+
+    popupRef.current.on("close", () => {
+      openIdRef.current = null;
+    });
+  }
+
+  function drawPillMarkers(map: mapboxgl.Map, parcels: Parcel[]) {
+    clearMarkers();
+
+    const zoom = map.getZoom();
+    const max =
+      zoom < 11 ? 120 :
+      zoom < 13 ? 250 :
+      zoom < 15 ? 600 :
+      1200;
+
+    parcels
+      .filter((p) => Number.isFinite(p.lng) && Number.isFinite(p.lat))
+      .slice(0, max)
+      .forEach((p) => {
+        const el = document.createElement("button");
+        el.type = "button";
+
+        el.className =
+          "px-2.5 py-1 rounded-full text-[11px] font-semibold " +
+          "bg-blue-600 text-white shadow-md border border-white/70 " +
+          "hover:bg-blue-700 active:bg-blue-800 transition " +
+          "whitespace-nowrap select-none";
+
+        el.style.transform = "translateY(-1px)";
+        el.textContent = formatMoney(p.total_value ?? null) || "—";
+
+        el.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+
+          const id = p.sl_uuid;
+
+          if (openIdRef.current === id) {
+            closePopup();
+            return;
+          }
+
+          openIdRef.current = id;
+
+          showPopup(map, [p.lng as number, p.lat as number], {
+            address: p.address,
+            county: p.county,
+            sqft: p.sqft,
+            total_value: p.total_value,
+          });
+        });
+
+        const marker = new mapboxgl.Marker({ element: el, anchor: "center" })
+          .setLngLat([p.lng as number, p.lat as number])
+          .addTo(map);
+
+        markersRef.current.push(marker);
+      });
+  }
 
   useEffect(() => {
     if (!mapDivRef.current || mapRef.current) return;
@@ -74,22 +212,26 @@ export default function MapView({ filters, filtersVersion, onBboxChange }: Props
 
     map.addControl(new mapboxgl.NavigationControl(), "top-right");
 
-    // Resize fixes
     requestAnimationFrame(() => map.resize());
     setTimeout(() => map.resize(), 250);
 
     const ro = new ResizeObserver(() => map.resize());
     if (wrapperRef.current) ro.observe(wrapperRef.current);
 
+    map.on("click", () => {
+      closePopup();
+    });
+
     const loadParcels = async () => {
       if (!mapRef.current) return;
-      const map = mapRef.current;
-      const bbox = getBbox(map);
+      const m = mapRef.current;
+
+      const bbox = getBbox(m);
+      onBboxChange(bbox);
 
       try {
         setLoading(true);
 
-        // 1) Always fetch centroids first (fast)
         const centroidData = await fetchParcels({
           bbox,
           limit: 1500,
@@ -100,60 +242,58 @@ export default function MapView({ filters, filtersVersion, onBboxChange }: Props
         if ("items" in centroidData) {
           setCount(centroidData.count);
           setItems(centroidData.items);
+          drawPillMarkers(m, centroidData.items);
         }
 
-        // 2) Decide if we should fetch polygons
-        const zoom = map.getZoom();
-        const itemCount = "items" in centroidData ? centroidData.items.length : 0;
-
-        const shouldUsePolygons = zoom >= 17;
+        const zoom = m.getZoom();
+        const shouldUsePolygons = zoom >= 18;
 
         if (!shouldUsePolygons) {
-          // remove polygon layers if present
-          if (map.getLayer(POLY_FILL_ID)) map.removeLayer(POLY_FILL_ID);
-          if (map.getLayer(POLY_LINE_ID)) map.removeLayer(POLY_LINE_ID);
-          if (map.getSource(POLY_SOURCE_ID)) map.removeSource(POLY_SOURCE_ID);
+          clearPolygons(m);
           return;
         }
 
-        // 3) Fetch polygons 
         const polyData = await fetchParcels({
           bbox,
-          limit: 200, // your backend default/safe
+          limit: 200,
           format: "polygon",
           ...filtersRef.current,
         });
 
-        if ("geojson" in polyData) {
-          if (map.getSource(POLY_SOURCE_ID)) {
-            (map.getSource(POLY_SOURCE_ID) as mapboxgl.GeoJSONSource).setData(polyData.geojson as any);
-          } else {
-            map.addSource(POLY_SOURCE_ID, {
-              type: "geojson",
-              data: polyData.geojson as any,
-            });
+        if (!("geojson" in polyData)) {
+          clearPolygons(m);
+          return;
+        }
 
-            map.addLayer({
-              id: POLY_FILL_ID,
-              type: "fill",
-              source: POLY_SOURCE_ID,
-              paint: {
-                "fill-color": "#2563eb",
-                "fill-opacity": 0.15,
-              },
-            });
+        if (m.getSource(POLY_SOURCE_ID)) {
+          (m.getSource(POLY_SOURCE_ID) as mapboxgl.GeoJSONSource).setData(polyData.geojson as any);
+        } else {
+          m.addSource(POLY_SOURCE_ID, { type: "geojson", data: polyData.geojson as any });
 
-            map.addLayer({
-              id: POLY_LINE_ID,
-              type: "line",
-              source: POLY_SOURCE_ID,
-              paint: {
-                "line-color": "#2563eb",
-                "line-width": 2,
-                "line-opacity": 0.9,
-              },
-            });
-          }
+          m.addLayer({
+            id: POLY_FILL_ID,
+            type: "fill",
+            source: POLY_SOURCE_ID,
+            paint: { "fill-color": "#2563eb", "fill-opacity": 0.12 },
+          });
+
+          m.addLayer({
+            id: POLY_LINE_ID,
+            type: "line",
+            source: POLY_SOURCE_ID,
+            paint: { "line-color": "#2563eb", "line-width": 2, "line-opacity": 0.9 },
+          });
+
+          map.on("click", POLY_FILL_ID, (e) => {
+            e.preventDefault();
+            e.originalEvent.stopPropagation(); 
+
+            const feature = e.features?.[0];
+            if (!feature) return;
+
+            openIdRef.current = null; 
+            showPopup(map, e.lngLat, feature.properties);
+          });
         }
       } catch (err) {
         console.error("failed to load parcels", err);
@@ -162,111 +302,45 @@ export default function MapView({ filters, filtersVersion, onBboxChange }: Props
       }
     };
 
-    map.on("load", () => {
-      map.addSource(SOURCE_ID, {
-        type: "geojson",
-        data: { type: "FeatureCollection", features: [] },
-      });
-
-      map.addLayer({
-        id: LAYER_ID,
-        type: "circle",
-        source: SOURCE_ID,
-        paint: {
-          "circle-radius": 4,
-          "circle-opacity": 0.75,
-          "circle-stroke-width": 1,
-          "circle-stroke-color": "#ffffff",
-          "circle-color": "#2563eb",
-        },
-      });
-
-      map.on("mouseenter", LAYER_ID, () => {
-        map.getCanvas().style.cursor = "pointer";
-      });
-      map.on("mouseleave", LAYER_ID, () => {
-        map.getCanvas().style.cursor = "";
-      });
-
-      // click popup
-      map.on("click", LAYER_ID, (e) => {
-        const feature = e.features?.[0];
-        if (!feature) return;
-
-        const coords = (feature.geometry as any).coordinates as [number, number];
-        const props = feature.properties as any;
-
-        const address = props.address || "(no address)";
-        const value = props.total_value ?? "N/A";
-        const sqft = props.sqft ?? "N/A";
-        const county = props.county ?? "";
-
-        popupRef.current?.remove();
-        popupRef.current = new mapboxgl.Popup({ closeButton: true, closeOnClick: true })
-          .setLngLat(coords)
-          .setHTML(
-            `<div style="font-size:12px;line-height:1.4">
-              <div style="font-weight:600;margin-bottom:4px">${address}</div>
-              <div><b>County:</b> ${county}</div>
-              <div><b>Total Value:</b> ${value}</div>
-              <div><b>Sqft:</b> ${sqft}</div>
-            </div>`
-          )
-          .addTo(map);
-      });
-
-      // initial load
-      loadParcels();
-    });
+    map.on("load", () => loadParcels());
 
     map.on("moveend", () => {
       if (debounceRef.current) window.clearTimeout(debounceRef.current);
       debounceRef.current = window.setTimeout(() => loadParcels(), 350);
     });
 
+    map.on("zoomend", () => {
+      drawPillMarkers(map, itemsRef.current);
+    });
+
     mapRef.current = map;
+    (mapRef.current as any).__loadParcels = loadParcels;
 
     return () => {
       if (debounceRef.current) window.clearTimeout(debounceRef.current);
-      popupRef.current?.remove();
+      closePopup();
+      clearMarkers();
       ro.disconnect();
       map.remove();
       mapRef.current = null;
     };
-  }, []);
+  }, [onBboxChange]);
 
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    const src = map.getSource(SOURCE_ID) as mapboxgl.GeoJSONSource | undefined;
-    if (!src) return;
-    src.setData(geojson as any);
-  }, [geojson]);
-
-  // When user clicks Apply/Reset, re-fetch immediately (no need to move the map)
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-
-    const bbox = getBbox(map);
-    onBboxChange(bbox);
-
-    setLoading(true);
-    fetchParcels({ bbox, limit: 1500, ...filters })
-      .then((data) => {
-        setCount(data.count);
-        setItems(data.items);
-      })
-      .catch((err) => console.error("failed to load parcels", err))
-      .finally(() => setLoading(false));
-  }, [filtersVersion]); 
+    const loader = (map as any).__loadParcels as undefined | (() => void);
+    loader?.();
+  }, [filtersVersion]);
 
   return (
     <div ref={wrapperRef} className="h-full w-full relative">
       <div ref={mapDivRef} className="h-full w-full" />
 
       <div className="absolute bottom-3 left-3 bg-white/90 border rounded-md px-3 py-2 text-xs text-gray-700 shadow">
-        {loading ? "Loading parcels..." : `Points: ${items.length} | Count: ${count} | Zoom: ${mapRef.current?.getZoom().toFixed(1) ?? "-"}`}
+        {loading
+          ? "Loading parcels..."
+          : `Shown: ${items.length} | Count: ${count} | Zoom: ${mapRef.current?.getZoom().toFixed(1) ?? "-"}`}
       </div>
     </div>
   );
