@@ -24,8 +24,6 @@ const LOGOUT_URI = import.meta.env.VITE_COGNITO_LOGOUT_URI;
 const TOKEN_KEY = "pa_tokens";
 const PKCE_KEY = "pkce_verifier";
 
-// Used to prevent double-token-exchange in dev/StrictMode or refreshes.
-// (Authorization code is single-use; calling /token twice causes 400.)
 const CODE_USED_KEY = "pa_code_used";
 
 export type Tokens = {
@@ -64,7 +62,6 @@ export function isLoggedIn() {
   return Boolean(getValidTokens());
 }
 
-// Returns tokens only if not expired (with small safety buffer)
 export function getValidTokens(bufferSeconds = 30): Tokens | null {
   const t = getTokens();
   if (!t) return null;

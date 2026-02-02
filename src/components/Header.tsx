@@ -24,7 +24,6 @@ export default function Header(props: { bbox: number[] | null; filters: ParcelFi
         </span>
 
         <button
-          type="button"
           onClick={handleExport}
           disabled={!bbox}
           className="px-3 py-1.5 rounded-md border text-sm hover:bg-gray-50 disabled:opacity-60"
@@ -34,7 +33,6 @@ export default function Header(props: { bbox: number[] | null; filters: ParcelFi
 
         {!authed ? (
           <button
-            type="button"
             onClick={() => login()}
             className="px-3 py-1.5 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700"
           >
@@ -42,14 +40,12 @@ export default function Header(props: { bbox: number[] | null; filters: ParcelFi
           </button>
         ) : (
           <button
-            type="button"
             onClick={() => logout()}
             className="px-3 py-1.5 rounded-md border text-sm hover:bg-gray-50"
           >
             Logout
           </button>
         )}
-
       </div>
     </header>
   );
