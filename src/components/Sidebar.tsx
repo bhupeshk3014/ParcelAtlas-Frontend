@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ParcelFilters } from "../lib/types";
 
 type Props = {
@@ -20,14 +20,24 @@ export default function Sidebar({ initial, onApply, onReset }: Props) {
   const [minSqft, setMinSqft] = useState(initial.minSqft?.toString() ?? "");
   const [maxSqft, setMaxSqft] = useState(initial.maxSqft?.toString() ?? "");
 
+  // If Home loads saved filters later, update the input fields
+  useEffect(() => {
+    setMinValue(initial.minValue?.toString() ?? "");
+    setMaxValue(initial.maxValue?.toString() ?? "");
+    setMinSqft(initial.minSqft?.toString() ?? "");
+    setMaxSqft(initial.maxSqft?.toString() ?? "");
+  }, [initial.minValue, initial.maxValue, initial.minSqft, initial.maxSqft]);
+
   const error = useMemo(() => {
     const a = toNum(minValue);
     const b = toNum(maxValue);
     const c = toNum(minSqft);
     const d = toNum(maxSqft);
 
-    if (a !== undefined && b !== undefined && a > b) return "Min Value cannot be greater than Max Value";
-    if (c !== undefined && d !== undefined && c > d) return "Min Sqft cannot be greater than Max Sqft";
+    if (a !== undefined && b !== undefined && a > b)
+      return "Min Value cannot be greater than Max Value";
+    if (c !== undefined && d !== undefined && c > d)
+      return "Min Sqft cannot be greater than Max Sqft";
     return "";
   }, [minValue, maxValue, minSqft, maxSqft]);
 
@@ -54,7 +64,9 @@ export default function Sidebar({ initial, onApply, onReset }: Props) {
     <div className="p-4 space-y-4">
       <div>
         <h2 className="font-semibold">Filters</h2>
-        <p className="text-sm text-gray-600">Apply filters to parcels in the current viewport.</p>
+        <p className="text-sm text-gray-600">
+          Apply filters to parcels in the current viewport.
+        </p>
       </div>
 
       <div className="space-y-3">
@@ -78,7 +90,10 @@ export default function Sidebar({ initial, onApply, onReset }: Props) {
         >
           Apply
         </button>
-        <button onClick={handleReset} className="flex-1 px-3 py-2 rounded-md border text-sm hover:bg-gray-50">
+        <button
+          onClick={handleReset}
+          className="flex-1 px-3 py-2 rounded-md border text-sm hover:bg-gray-50"
+        >
           Reset
         </button>
       </div>

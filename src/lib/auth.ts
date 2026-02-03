@@ -9,21 +9,21 @@ async function sha256(input: string) {
 }
 
 function randomString(len = 64) {
-  const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~";
+  const chars =
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~";
   let out = "";
   const arr = crypto.getRandomValues(new Uint8Array(len));
   for (let i = 0; i < len; i++) out += chars[arr[i] % chars.length];
   return out;
 }
 
-const DOMAIN = import.meta.env.VITE_COGNITO_DOMAIN; 
+const DOMAIN = import.meta.env.VITE_COGNITO_DOMAIN;
 const CLIENT_ID = import.meta.env.VITE_COGNITO_CLIENT_ID;
 const REDIRECT_URI = import.meta.env.VITE_COGNITO_REDIRECT_URI;
 const LOGOUT_URI = import.meta.env.VITE_COGNITO_LOGOUT_URI;
 
 const TOKEN_KEY = "pa_tokens";
 const PKCE_KEY = "pkce_verifier";
-
 const CODE_USED_KEY = "pa_code_used";
 
 export type Tokens = {
@@ -40,6 +40,12 @@ type TokenError = {
   error_description?: string;
 };
 
+const AUTH_CHANGED_EVENT = "pa-auth-changed";
+
+function emitAuthChanged() {
+  window.dispatchEvent(new Event(AUTH_CHANGED_EVENT));
+}
+
 export function getTokens(): Tokens | null {
   const raw = localStorage.getItem(TOKEN_KEY);
   if (!raw) return null;
@@ -52,10 +58,12 @@ export function getTokens(): Tokens | null {
 
 export function setTokens(t: Tokens) {
   localStorage.setItem(TOKEN_KEY, JSON.stringify(t));
+  emitAuthChanged();
 }
 
 export function clearTokens() {
   localStorage.removeItem(TOKEN_KEY);
+  emitAuthChanged();
 }
 
 export function isLoggedIn() {
@@ -137,14 +145,13 @@ export async function handleAuthCallback(code: string) {
       extra = errJson?.error_description
         ? ` - ${errJson.error}: ${errJson.error_description}`
         : errJson?.error
-          ? ` - ${errJson.error}`
-          : "";
+        ? ` - ${errJson.error}`
+        : "";
     } catch {
       // ignore
     }
 
     sessionStorage.removeItem(CODE_USED_KEY);
-
     throw new Error(`Token exchange failed: ${res.status}${extra}`);
   }
 
@@ -160,6 +167,7 @@ export async function handleAuthCallback(code: string) {
 
 export function logout() {
   clearTokens();
+
   localStorage.removeItem(PKCE_KEY);
   sessionStorage.removeItem(CODE_USED_KEY);
 
@@ -174,3 +182,25 @@ export function logout() {
 
   window.location.href = `${DOMAIN}/logout?${qs.toString()}`;
 }
+
+function base64UrlDecode(input: string) {
+  const pad = "=".repeat((4 - (input.length % 4)) % 4);
+  const b64 = (input + pad).replace(/-/g, "+").replace(/_/g, "/");
+  return atob(b64);
+}
+
+export function getUserSub(): string | null {
+  const t = getTokens();
+  const jwt = t?.id_token || t?.access_token;
+  if (!jwt) return null;
+
+  try {
+    const payload = jwt.split(".")[1];
+    const json = JSON.parse(base64UrlDecode(payload));
+    return typeof json.sub === "string" ? json.sub : null;
+  } catch {
+    return null;
+  }
+}
+
+export const AUTH_CHANGED = AUTH_CHANGED_EVENT;
