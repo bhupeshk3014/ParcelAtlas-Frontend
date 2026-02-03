@@ -1,5 +1,5 @@
 import type { ParcelFilters } from "../lib/types";
-import { buildExportUrl, downloadByUrl } from "../lib/exportCsv";
+import { exportCsv } from "../lib/exportCsv";
 import { isLoggedIn, login, logout } from "../lib/auth";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL;
@@ -8,10 +8,20 @@ export default function Header(props: { bbox: number[] | null; filters: ParcelFi
   const { bbox, filters } = props;
   const authed = isLoggedIn();
 
-  const handleExport = () => {
+  const handleExport = async () => {
     if (!bbox) return;
-    const url = buildExportUrl({ apiBaseUrl: API_BASE, bbox, filters, limit: 5000 });
-    downloadByUrl(url, "parcels_export.csv");
+
+    try {
+      await exportCsv({
+        apiBaseUrl: API_BASE,
+        bbox,
+        filters,
+        limit: 5000,
+      });
+    } catch (err) {
+      console.error(err);
+      alert("Failed to export CSV");
+    }
   };
 
   return (

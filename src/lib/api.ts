@@ -25,12 +25,33 @@ export type ParcelsPolygonResponse = {
   applied: { format: "centroid" | "polygon" };
 };
 
-export async function fetchParcels(params: {
-  bbox: number[];
-  limit?: number;
-  format?: "centroid" | "polygon";
-} & ParcelFilters) {
-  const { bbox, limit = 1000, format = "centroid", minValue, maxValue, minSqft, maxSqft } = params;
+function authHeaders(): HeadersInit {
+  const tokens = getTokens();
+  const headers: HeadersInit = {};
+
+  if (tokens?.access_token) {
+    headers["Authorization"] = `Bearer ${tokens.access_token}`;
+  }
+
+  return headers;
+}
+
+export async function fetchParcels(
+  params: {
+    bbox: number[];
+    limit?: number;
+    format?: "centroid" | "polygon";
+  } & ParcelFilters
+) {
+  const {
+    bbox,
+    limit = 1000,
+    format = "centroid",
+    minValue,
+    maxValue,
+    minSqft,
+    maxSqft,
+  } = params;
 
   const qs = new URLSearchParams({
     bbox: bbox.join(","),
@@ -43,12 +64,14 @@ export async function fetchParcels(params: {
   if (minSqft !== undefined) qs.set("minSqft", String(minSqft));
   if (maxSqft !== undefined) qs.set("maxSqft", String(maxSqft));
 
-  const tokens = getTokens();
-  const headers: HeadersInit = {};
-  if (tokens?.id_token) headers["Authorization"] = `Bearer ${tokens.id_token}`;
+  const url = `${API_BASE}/parcels?${qs.toString()}`;
 
-  const res = await fetch(`${API_BASE}/parcels?${qs.toString()}`, { headers });
-  if (!res.ok) throw new Error(`Failed to fetch parcels: ${res.status}`);
+  const res = await fetch(url, { headers: authHeaders() });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Failed to fetch parcels: ${res.status} ${text}`);
+  }
 
   return res.json() as Promise<ParcelsCentroidResponse | ParcelsPolygonResponse>;
 }
