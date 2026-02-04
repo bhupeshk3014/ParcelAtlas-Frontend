@@ -214,6 +214,9 @@ Authenticated users can export filtered results as CSV.
 ### Login View 
 ![Login View](screenshots/login.png)
 
+### Polygon View 
+![Polygon View](screenshots/polygon.png)
+
 ### Filter View 
 ![Filter View](screenshots/filter.png)
 
