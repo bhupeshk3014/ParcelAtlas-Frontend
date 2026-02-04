@@ -21,6 +21,16 @@ This frontend is designed as part of a take‑home project and focuses on clarit
 
 ---
 
+## Design Decisions
+
+- Centroid rendering by default for performance
+- Polygon rendering only at high zoom and low feature count
+- LocalStorage used for filter persistence to avoid backend state
+- Access token used for API auth; ID token avoided for backend calls
+
+
+---
+
 ## Tech Stack
 
 - React 18
@@ -143,6 +153,9 @@ Authenticated users can export filtered results as CSV.
 
 ### Map View 
 ![Map View](screenshots/map.png)
+
+### Login View 
+![Login View](screenshots/login.png)
 
 ---
 
