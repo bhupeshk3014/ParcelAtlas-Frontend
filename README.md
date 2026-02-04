@@ -1,73 +1,171 @@
-# React + TypeScript + Vite
+# ParcelAtlas Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+## Overview
+ParcelAtlas Frontend is a React + TypeScript application for visualizing real estate parcels in the Dallas–Fort Worth area on an interactive Mapbox map. 
+It supports guest browsing, authenticated access via AWS Cognito, polygon rendering at high zoom levels, persistent filters, and CSV export.
 
-Currently, two official plugins are available:
+This frontend is designed as part of a take‑home project and focuses on clarity, correctness, and production‑ready structure.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+---
 
-## React Compiler
+## Features
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- Interactive Mapbox map (centroids + polygons)
+- Guest access (Dallas county only)
+- Login / Signup via AWS Cognito (Hosted UI)
+- Authenticated access to full dataset
+- Price & square‑footage filters
+- Filter persistence (guest + per‑user)
+- CSV export (authenticated)
+- Dockerized production build using Nginx
 
-## Expanding the ESLint configuration
+---
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## Tech Stack
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+- React 18
+- TypeScript
+- Vite
+- Mapbox GL JS
+- AWS Cognito (OAuth2 + PKCE)
+- Docker + Nginx
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+---
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## Project Structure
+
+```
+ParcelAtlas-Frontend/
+├── public/
+│   └── index.html
+├── src/
+│   ├── components/
+│   │   ├── Header.tsx
+│   │   ├── Sidebar.tsx
+│   │   └── MapView.tsx
+│   ├── lib/
+│   │   ├── api.ts
+│   │   ├── auth.ts
+│   │   ├── filterStorage.ts
+│   │   └── exportCsv.ts
+│   │   └── types.ts
+│   ├── pages/
+│   │   ├── AuthCallback.tsx
+│   │   └── Home.tsx
+│   ├── styles/
+│   │   └── map-popup.css
+│   ├── main.tsx
+├── Dockerfile
+├── nginx.conf
+├── .dockerignore
+├── package.json
+└── README.md
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+---
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## Environment Variables
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+Create a `.env` file locally or provide build args in Docker.
+
 ```
+VITE_API_BASE_URL=http://localhost:8080
+VITE_MAPBOX_ACCESS_TOKEN=pk.eyJ1IjoiYmh1cGVzaGt1bWFyIiwiYSI6ImNtbDIwZHNxMTBkNTYzZ3B2eXB0ZDdmMG4ifQ.tcPAyu1aZQ4G1B8E__yCUw
+
+AWS_REGION=us-east-2
+COGNITO_USER_POOL_ID=us-east-2_F4KqiXCV1
+VITE_COGNITO_CLIENT_ID=1l5g4klnf8ugcs75hjasdqfn0e
+VITE_COGNITO_DOMAIN=https://us-east-2f4kqixcv1.auth.us-east-2.amazoncognito.com
+VITE_COGNITO_REDIRECT_URI=http://localhost:5173/auth/callback
+VITE_COGNITO_LOGOUT_URI=http://localhost:5173/
+```
+
+---
+
+## Local Development
+
+```
+npm install
+npm run dev
+```
+
+App runs at:
+```
+http://localhost:5173
+```
+
+---
+
+## Docker Build & Run
+
+### Build
+
+```
+docker build   --build-arg VITE_API_BASE_URL=http://localhost:8080   --build-arg VITE_MAPBOX_ACCESS_TOKEN=pk.eyJ1IjoiYmh1cGVzaGt1bWFyIiwiYSI6ImNtbDIwZHNxMTBkNTYzZ3B2eXB0ZDdmMG4ifQ.tcPAyu1aZQ4G1B8E__yCUw   --build-arg VITE_COGNITO_DOMAIN=https://us-east-2f4kqixcv1.auth.us-east-2.amazoncognito.com   --build-arg VITE_COGNITO_CLIENT_ID=1l5g4klnf8ugcs75hjasdqfn0e   --build-arg VITE_COGNITO_REDIRECT_URI=http://localhost:5173/auth/callback   --build-arg VITE_COGNITO_LOGOUT_URI=http://localhost:5173/   -t parcelatlas-frontend .
+```
+
+### Run
+
+```
+docker run -p 5173:80 parcelatlas-frontend
+```
+
+---
+
+## Authentication Flow
+
+1. User clicks Login
+2. Redirected to Cognito Hosted UI
+3. Authorization code returned
+4. PKCE token exchange
+5. Tokens stored in localStorage
+6. Access token sent to backend APIs
+
+---
+
+## Filter Persistence (ST‑04)
+
+- Guest filters saved under:
+  `pa_filters_guest`
+- Authenticated filters saved under:
+  `pa_filters_<cognito_sub>`
+- Switching login/logout automatically switches filter scope
+
+---
+
+## CSV Export
+
+Authenticated users can export filtered results as CSV.
+
+---
+
+## Screenshots
+
+```
+docs/
+├── map-view.png
+├── login.png
+├── filters.png
+└── polygons.png
+```
+
+Embed example:
+```
+![Map View](screenshots/map.png)
+```
+
+---
+
+## Notes
+
+- Frontend & backend are intentionally separated
+- All environment values are configurable
+- Dockerized for reproducible builds
+- No mock data used; real PostGIS queries
+
+---
+
+## Author
+
+Bhupesh Kumar  
+Take‑Home Project Submission
