@@ -16,6 +16,15 @@ https://parcel-atlas-frontend.vercel.app/
 ### Backend API (Render)
 https://parcelatlas-backend.onrender.com/
 
+> **Note (Render free tier):** The backend may take ~1–5 minutes to “wake up” on the first request after inactivity. After the first request, it runs normally.
+
+### Quick Links
+- Health check:  
+  https://parcelatlas-backend.onrender.com/health
+
+- Guest parcels (Dallas-only):  
+  https://parcelatlas-backend.onrender.com/parcels?limit=10&bbox=-97,32.6,-96.6,33.0
+
 ---
 
 ## Features
