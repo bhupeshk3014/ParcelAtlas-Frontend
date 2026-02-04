@@ -5,8 +5,9 @@ import type { ParcelFilters } from "../lib/types";
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
 
-function getBbox(map: mapboxgl.Map): number[] {
+function getBbox(map: mapboxgl.Map): number[] | null {
   const b = map.getBounds();
+  if (!b) return null;
   return [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
 }
 
@@ -261,6 +262,7 @@ export default function MapView({ filters, filtersVersion, onBboxChange }: Props
       const m = mapRef.current;
 
       const bbox = getBbox(m);
+      if (!bbox) return;
       onBboxChange(bbox);
 
       try {
