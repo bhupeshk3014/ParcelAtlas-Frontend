@@ -141,18 +141,8 @@ Authenticated users can export filtered results as CSV.
 
 ## Screenshots
 
-```
-docs/
-├── map-view.png
-├── login.png
-├── filters.png
-└── polygons.png
-```
-
-Embed example:
-```
+### Map View 
 ![Map View](screenshots/map.png)
-```
 
 ---
 
