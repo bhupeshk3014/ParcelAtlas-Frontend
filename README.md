@@ -8,6 +8,16 @@ This frontend is designed as part of a take‑home project and focuses on clarit
 
 ---
 
+## Hosted URLs (Live Demo)
+
+### Frontend (Vercel)
+https://parcel-atlas-frontend.vercel.app/
+
+### Backend API (Render)
+https://parcelatlas-backend.onrender.com/
+
+---
+
 ## Features
 
 - Interactive Mapbox map (centroids + polygons)
@@ -28,6 +38,53 @@ This frontend is designed as part of a take‑home project and focuses on clarit
 - LocalStorage used for filter persistence to avoid backend state
 - Access token used for API auth; ID token avoided for backend calls
 
+---
+
+## Centroid vs Polygon Rendering Strategy
+
+ParcelAtlas uses a **two-stage geometry rendering strategy** to balance performance and accuracy when visualizing large spatial datasets.
+
+### Centroid Rendering (Default)
+
+- Parcels are rendered as **point centroids** by default
+- Used during:
+  - Initial load
+  - Low zoom levels
+  - Large bounding boxes
+- Optimized for:
+  - Fast map interaction
+  - Smooth panning & zooming
+  - Low memory usage
+
+This allows thousands of parcels to be displayed without overwhelming the browser.
+
+---
+
+### Polygon Rendering (High Zoom)
+
+- Full parcel polygons are rendered **only when**:
+  - User zooms in sufficiently
+  - Parcel count within viewport is below a safe threshold
+- Prevents:
+  - Browser freezes
+  - Excessive DOM / WebGL load
+  - Slow redraws
+
+Polygon rendering provides **accurate parcel boundaries** for detailed inspection without sacrificing overall performance.
+
+---
+
+### Why This Approach?
+
+Rendering thousands of polygons simultaneously is expensive in Mapbox GL.
+This hybrid strategy ensures:
+
+- Excellent performance at scale
+- Visual accuracy when needed
+- Predictable client behavior
+- Production-safe rendering
+
+This design mirrors real-world GIS platforms used in commercial mapping applications.
 
 ---
 
@@ -80,14 +137,14 @@ Create a `.env` file locally or provide build args in Docker.
 
 ```
 VITE_API_BASE_URL=http://localhost:8080
-VITE_MAPBOX_ACCESS_TOKEN=pk.eyJ1IjoiYmh1cGVzaGt1bWFyIiwiYSI6ImNtbDIwZHNxMTBkNTYzZ3B2eXB0ZDdmMG4ifQ.tcPAyu1aZQ4G1B8E__yCUw
+VITE_MAPBOX_ACCESS_TOKEN=XXXXXXXXXXXXXXXXXXXXXXXX
 
-AWS_REGION=us-east-2
-COGNITO_USER_POOL_ID=us-east-2_F4KqiXCV1
-VITE_COGNITO_CLIENT_ID=1l5g4klnf8ugcs75hjasdqfn0e
-VITE_COGNITO_DOMAIN=https://us-east-2f4kqixcv1.auth.us-east-2.amazoncognito.com
-VITE_COGNITO_REDIRECT_URI=http://localhost:5173/auth/callback
-VITE_COGNITO_LOGOUT_URI=http://localhost:5173/
+AWS_REGION=XXX
+COGNITO_USER_POOL_ID=XXXXXXXXXXX
+VITE_COGNITO_CLIENT_ID=XXXXXXXXXXXXXX
+VITE_COGNITO_DOMAIN=https://xxxxxxxxx.auth.us-east-2.amazoncognito.com
+VITE_COGNITO_REDIRECT_URI=http://xxxxxxxxxxxx/auth/callback
+VITE_COGNITO_LOGOUT_URI=http://xxxxxxxxxxxx:5173/
 ```
 
 ---
@@ -111,7 +168,7 @@ http://localhost:5173
 ### Build
 
 ```
-docker build   --build-arg VITE_API_BASE_URL=http://localhost:8080   --build-arg VITE_MAPBOX_ACCESS_TOKEN=pk.eyJ1IjoiYmh1cGVzaGt1bWFyIiwiYSI6ImNtbDIwZHNxMTBkNTYzZ3B2eXB0ZDdmMG4ifQ.tcPAyu1aZQ4G1B8E__yCUw   --build-arg VITE_COGNITO_DOMAIN=https://us-east-2f4kqixcv1.auth.us-east-2.amazoncognito.com   --build-arg VITE_COGNITO_CLIENT_ID=1l5g4klnf8ugcs75hjasdqfn0e   --build-arg VITE_COGNITO_REDIRECT_URI=http://localhost:5173/auth/callback   --build-arg VITE_COGNITO_LOGOUT_URI=http://localhost:5173/   -t parcelatlas-frontend .
+docker build   --build-arg VITE_API_BASE_URL=http://localhost:8080   --build-arg VITE_MAPBOX_ACCESS_TOKEN=xxxxxxxxxxxxxx   --build-arg VITE_COGNITO_DOMAIN=https://xxxxxxxxx.auth.us-east-2.amazoncognito.com   --build-arg VITE_COGNITO_CLIENT_ID=xxxxxxxxxxxx  --build-arg VITE_COGNITO_REDIRECT_URI=http://xxxxxxxxx:5173/auth/callback   --build-arg VITE_COGNITO_LOGOUT_URI=http://xxxxxxt:5173/   -t parcelatlas-frontend .
 ```
 
 ### Run
@@ -156,6 +213,34 @@ Authenticated users can export filtered results as CSV.
 
 ### Login View 
 ![Login View](screenshots/login.png)
+
+### Filter View 
+![Filter View](screenshots/filter.png)
+
+---
+
+## Quick Test
+
+1. Open the frontend URL  
+   → Map loads with parcel centroids visible
+
+2. Pan the map as a guest  
+   → Only **Dallas County** parcels are visible
+
+3. Click **Login**  
+   → Authenticate via AWS Cognito Hosted UI
+
+4. After login, pan the map again  
+   → Additional counties (Collin, Denton, etc.) appear
+
+5. Apply filters (price / sqft)  
+   → Parcels update in real time
+
+6. Refresh the page  
+   → Filters persist automatically
+
+7. Click **Export CSV** (authenticated only)  
+   → Filtered results download successfully
 
 ---
 
